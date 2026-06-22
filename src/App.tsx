@@ -42,7 +42,7 @@ const DEFAULT_FORM_STATE: TransactionData = {
 export default function App() {
   // Application Dynamic State
   const [formData, setFormData] = useState<TransactionData>({ ...DEFAULT_FORM_STATE });
-  const [apiUrl, setApiUrl] = useState<string>("http://localhost:8000/predict");
+  const [apiUrl, setApiUrl] = useState<string>("http://localhost:8000/api/predict");
   const [useSimulator, setUseSimulator] = useState<boolean>(true);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -223,11 +223,26 @@ export default function App() {
   };
 
   const copyPythonCode = () => {
-    const code = `from fastapi import FastAPI
+    const code = `import os
+import joblib
+import pandas as pd
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-app = FastAPI()
+# Locate and load the joblib model
+model_path = os.path.join(os.path.dirname(__file__), "models", "fraud_detection_model.joblib")
+model = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global model
+    if os.path.exists(model_path):
+        model = joblib.load(model_path)
+    yield
+
+app = FastAPI(title="Credit Card Fraud Prediction API", lifespan=lifespan)
 
 # Enable CORS for local cross-origin network fetching
 app.add_middleware(
@@ -241,25 +256,30 @@ app.add_middleware(
 class Transaction(BaseModel):
     time: float
     amount: float
-    v1: float
-    v2: float
-    v3: float
-    v4: float
-    v5: float
-    v11: float
-    v12: float
-    v14: float
-    v17: float
+    v1: float; v2: float; v3: float; v4: float; v5: float
+    v11: float; v12: float; v14: float; v17: float
 
-@app.post("/predict")
+@app.post("/api/predict")
 def predict(tx: Transaction):
-    # Logic matching your machine learning decision model
-    score = (tx.v4 * 1.5) + (tx.v11 * 1.4) - (tx.v1 * 0.4) - (tx.v12 * 1.9) - (tx.v14 * 2.6) - (tx.v17 * 3.4)
-    if tx.amount > 3000:
-        score += 1.4
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
     
-    probability = 1 / (1 + 2.71828 ** (-score))
-    prediction = 1 if probability >= 0.50 else 0
+    # Map 11 features onto full 30-feature vector expected by RandomForest
+    feature_names = [
+        'Time', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10',
+        'V11', 'V12', 'V13', 'V14', 'V15', 'V16', 'V17', 'V18', 'V19', 'V20',
+        'V21', 'V22', 'V23', 'V24', 'V25', 'V26', 'V27', 'V28', 'Amount'
+    ]
+    features_dict = {f: 0.0 for f in feature_names}
+    features_dict.update({
+        'Time': tx.time, 'Amount': tx.amount,
+        'V1': tx.v1, 'V2': tx.v2, 'V3': tx.v3, 'V4': tx.v4, 'V5': tx.v5,
+        'V11': tx.v11, 'V12': tx.v12, 'V14': tx.v14, 'V17': tx.v17
+    })
+    
+    df = pd.DataFrame([features_dict], columns=feature_names)
+    prediction = int(model.predict(df)[0])
+    probability = float(model.predict_proba(df)[0][1])
     
     return {
         "prediction": prediction,
@@ -891,11 +911,25 @@ def predict(tx: Transaction):
                     </div>
 
                     <pre className="p-3 bg-[#09090b] text-[10px] font-mono border border-[#27272a] rounded overflow-x-auto max-h-56 leading-relaxed text-[#a1a1aa]">
-                      {`from fastapi import FastAPI
+                      {`import os
+import joblib
+import pandas as pd
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-app = FastAPI()
+model_path = os.path.join(os.path.dirname(__file__), "models", "fraud_detection_model.joblib")
+model = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global model
+    if os.path.exists(model_path):
+        model = joblib.load(model_path)
+    yield
+
+app = FastAPI(title="Credit Card Fraud Prediction API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -905,18 +939,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class cc_tx(BaseModel):
+class Transaction(BaseModel):
     time: float
     amount: float
-    v1: float; v2: float; v3: float; v4: float
-    v5: float; v11: float; v12: float; v14: float; v17: float
+    v1: float; v2: float; v3: float; v4: float; v5: float
+    v11: float; v12: float; v14: float; v17: float
 
-@app.post("/predict")
-def predict_tx(tx: cc_tx):
-    # Simulated decision tree
-    score = (tx.v4 * 1.5) + (tx.v11 * 1.4) - (tx.v17 * 3.4)
-    prob = 1 / (1 + 2.718 ** -score)
-    return {"prediction": 1 if prob >= 0.5 else 0, "probability": round(prob, 4)}`}
+@app.post("/api/predict")
+def predict(tx: Transaction):
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    
+    feature_names = [
+        'Time', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10',
+        'V11', 'V12', 'V13', 'V14', 'V15', 'V16', 'V17', 'V18', 'V19', 'V20',
+        'V21', 'V22', 'V23', 'V24', 'V25', 'V26', 'V27', 'V28', 'Amount'
+    ]
+    features_dict = {f: 0.0 for f in feature_names}
+    features_dict.update({
+        'Time': tx.time, 'Amount': tx.amount,
+        'V1': tx.v1, 'V2': tx.v2, 'V3': tx.v3, 'V4': tx.v4, 'V5': tx.v5,
+        'V11': tx.v11, 'V12': tx.v12, 'V14': tx.v14, 'V17': tx.v17
+    })
+    
+    df = pd.DataFrame([features_dict], columns=feature_names)
+    prediction = int(model.predict(df)[0])
+    probability = float(model.predict_proba(df)[0][1])
+    return {"prediction": prediction, "probability": round(probability, 4)}`}
                     </pre>
                   </div>
 
