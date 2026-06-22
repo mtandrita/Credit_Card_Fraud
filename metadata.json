@@ -1,0 +1,6 @@
+{
+  "name": "Credit Card Fraud Detection Dashboard",
+  "description": "A high-fidelity credit card fraud detection dashboard featuring real-time risk assessment, PCA feature testing, template loaders, API configuration, and interactive simulation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
